@@ -1,0 +1,88 @@
+version: '3.8'
+
+services:
+  traefik:
+    image: traefik:v3.1.6
+    container_name: traefik
+    command:
+      - --api.insecure=false
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      - --certificatesresolvers.cloudflare.acme.dnschallenge=true
+      - --certificatesresolvers.cloudflare.acme.dnschallenge.provider=cloudflare
+      - --certificatesresolvers.cloudflare.acme.email=${CLOUDFLARE_EMAIL}
+      - --certificatesresolvers.cloudflare.acme.storage=/letsencrypt/acme.json
+      - --log.level=INFO
+    environment:
+      - CLOUDFLARE_EMAIL=${CLOUDFLARE_EMAIL}
+      - CLOUDFLARE_DNS_API_TOKEN=${CLOUDFLARE_DNS_API_TOKEN}
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./letsencrypt:/letsencrypt
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - web
+
+  openwebui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: openwebui
+    restart: unless-stopped
+    environment:
+      - ENV=prod
+      - WEBUI_AUTH=True
+      - WEBUI_NAME=Open WebUI
+      - WEBUI_URL=https://${OPENWEBUI_SUBDOMAIN}
+      - DATA_DIR=/app/backend/data
+      - ENABLE_OAUTH_SIGNUP=true
+      - MICROSOFT_CLIENT_ID=${AZURE_AD_CLIENT_ID}
+      - MICROSOFT_CLIENT_SECRET=${AZURE_AD_CLIENT_SECRET}
+      - OAUTH_PROVIDER_NAME=AzureAD
+      - OAUTH_EMAIL_CLAIM=email
+      - OAUTH_SCOPES=openid email profile
+      - OAUTH_REDIRECT_URI=https://${OPENWEBUI_SUBDOMAIN}/auth/callback
+      - MICROSOFT_CLIENT_TENANT_ID=${AZURE_AD_TENANT_ID}
+      - OPENAI_API_KEY=${AZURE_API_KEY}
+      - OPENAI_API_BASE_URL=http://litellm-proxy:4000
+      - PORT=8080
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.openwebui.rule=Host(`${OPENWEBUI_SUBDOMAIN}`)
+      - traefik.http.routers.openwebui.entrypoints=websecure
+      - traefik.http.routers.openwebui.tls.certresolver=cloudflare
+      - traefik.http.services.openwebui.loadbalancer.server.port=8080
+    ports:
+      - "3000:8080"
+    volumes:
+      - open-webui:/app/backend/data
+    depends_on:
+      - litellm-proxy
+    networks:
+      - web
+
+  litellm-proxy:
+    image: ghcr.io/berriai/litellm:main-latest
+    container_name: litellm-proxy
+    restart: unless-stopped
+    volumes:
+      - ./litellm_config.yaml:/app/config.yaml
+    environment:
+      - AZURE_API_KEY=${AZURE_API_KEY}
+      - AZURE_API_BASE=${AZURE_API_BASE}
+      - AZURE_API_VERSION=${AZURE_API_VERSION}
+    ports:
+      - "4000:4000"
+    command: --config /app/config.yaml --detailed_debug
+    networks:
+      - web
+
+volumes:
+  open-webui:
+    driver: local
+
+networks:
+  web:
+    driver: bridge
