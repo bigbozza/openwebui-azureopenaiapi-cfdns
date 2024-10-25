@@ -57,7 +57,7 @@ services:
     ports:
       - "3000:8080"
     volumes:
-      - open-webui:/app/backend/data
+      - ${DATA_PATH}:/app/backend/data
     depends_on:
       - litellm-proxy
     networks:
@@ -78,10 +78,6 @@ services:
     command: --config /app/config.yaml --detailed_debug
     networks:
       - web
-
-volumes:
-  open-webui:
-    driver: local
 
 networks:
   web:
