@@ -16,7 +16,7 @@ This project sets up OpenWebUI with Azure OpenAI integration, secured behind Tra
 ├── docker-compose.yml
 ├── litellm_config.yaml
 └── letsencrypt/
-└── acme.json
+  └── acme.json
 ```
 ## Configuration
 
